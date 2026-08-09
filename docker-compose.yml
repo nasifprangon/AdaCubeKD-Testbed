@@ -1,0 +1,97 @@
+x-node-common: &node-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: adacubekd-node:latest
+  networks:
+    - adacube_net
+  volumes:
+    - ./logs:/app/logs
+    - ./results:/app/results
+    - ./configs:/app/configs
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: adacubekd-controller:latest
+    container_name: controller
+    hostname: controller
+    environment:
+      - ROLE=controller
+      - NUM_NODES=8
+    networks:
+      - adacube_net
+    volumes:
+      - ./logs:/app/logs
+      - ./results:/app/results
+      - ./configs:/app/configs
+
+  node0:
+    <<: *node-common
+    container_name: node0
+    hostname: node0
+    environment:
+      - ROLE=node
+      - NODE_ID=node0
+
+  node1:
+    <<: *node-common
+    container_name: node1
+    hostname: node1
+    environment:
+      - ROLE=node
+      - NODE_ID=node1
+
+  node2:
+    <<: *node-common
+    container_name: node2
+    hostname: node2
+    environment:
+      - ROLE=node
+      - NODE_ID=node2
+
+  node3:
+    <<: *node-common
+    container_name: node3
+    hostname: node3
+    environment:
+      - ROLE=node
+      - NODE_ID=node3
+
+  node4:
+    <<: *node-common
+    container_name: node4
+    hostname: node4
+    environment:
+      - ROLE=node
+      - NODE_ID=node4
+
+  node5:
+    <<: *node-common
+    container_name: node5
+    hostname: node5
+    environment:
+      - ROLE=node
+      - NODE_ID=node5
+
+  node6:
+    <<: *node-common
+    container_name: node6
+    hostname: node6
+    environment:
+      - ROLE=node
+      - NODE_ID=node6
+
+  node7:
+    <<: *node-common
+    container_name: node7
+    hostname: node7
+    environment:
+      - ROLE=node
+      - NODE_ID=node7
+
+networks:
+  adacube_net:
+    driver: bridge
