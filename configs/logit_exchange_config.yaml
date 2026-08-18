@@ -1,0 +1,7 @@
+data_root: datasets/cifar10_raw
+weights_dir: logs/weights
+model_name: simple_cnn
+num_classes: 10
+seed: 42
+reference_batch_size: 100
+default_node_id: node0

@@ -1,0 +1,10 @@
+# configs/partition_config.yaml
+# Controls Stage 0 dataset partitioning (datasets/partition.py)
+# All values below are DEFAULTS - CLI flags like --alpha override them per run.
+
+num_nodes: 8
+alpha: 1.0          # Dirichlet concentration. Lower = more non-IID (e.g. 0.1),
+                     # higher = closer to IID (e.g. 100).
+seed: 42
+data_root: datasets/cifar10_raw       # where torchvision downloads/caches CIFAR-10
+output_dir: datasets/partitions        # base dir - script adds alpha_<value>/ subfolder

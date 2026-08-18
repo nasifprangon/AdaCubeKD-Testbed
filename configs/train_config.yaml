@@ -1,0 +1,10 @@
+partitions_dir: datasets/partitions/alpha_1
+data_root: datasets/cifar10_raw
+log_dir: logs
+model_name: simple_cnn
+num_classes: 10
+seed: 42
+batch_size: 32
+lr: 0.01
+warmup_epochs: 5
+default_node_id: node0

@@ -5,5 +5,7 @@ logs/*
 results/*
 datasets/*.pt
 datasets/*.npz
+datasets/cifar10_raw/
+datasets/partitions/
 .DS_Store
 *.egg-info/

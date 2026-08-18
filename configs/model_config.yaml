@@ -1,0 +1,8 @@
+# configs/model_config.yaml
+# Controls model selection for training (models/model_loader.py)
+
+model_name: simple_cnn   # options (as implemented): simple_cnn
+                          # planned, not yet implemented: resnet18, mobilenetv2, lenet
+num_classes: 10           # CIFAR-10
+seed: 42                  # controls weight initialization - keep fixed across
+                           # runs you want to compare fairly

@@ -9,6 +9,9 @@ x-node-common: &node-common
     - ./logs:/app/logs
     - ./results:/app/results
     - ./configs:/app/configs
+    - ./datasets:/app/datasets
+    - ./node:/app/node
+    - ./models:/app/models
 
 services:
   controller:
@@ -27,6 +30,9 @@ services:
       - ./logs:/app/logs
       - ./results:/app/results
       - ./configs:/app/configs
+      - ./datasets:/app/datasets
+      - ./node:/app/node
+      - ./models:/app/models
 
   node0:
     <<: *node-common
