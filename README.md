@@ -10,15 +10,15 @@ All 9 pipeline stages are implemented and individually verified. The orchestrati
 
 | Stage | Name | Status |
 |---|---|---|
-| 0 | Local warm-up | ✅ Done |
-| 1 | Logit exchange | ✅ Done |
-| 2–3 | Peer scoring (5-factor CDB) | ✅ Done (reliability stubbed) |
-| 4 | Hypercube construction | ✅ Done |
-| 5 | Teacher selection (CDB filter) | ✅ Done |
-| 6 | Distillation update | ✅ Done |
-| 7 | Phase-aware control | ✅ Done (untuned schedule) |
-| 8 | Periodic refresh | ✅ Done (reliability tracking deferred) |
-| — | Orchestration loop | ✅ Done, smoke-tested only |
+| 0 | Local warm-up |  Done |
+| 1 | Logit exchange |  Done |
+| 2–3 | Peer scoring (5-factor CDB) |  Done (reliability stubbed) |
+| 4 | Hypercube construction |  Done |
+| 5 | Teacher selection (CDB filter) |  Done |
+| 6 | Distillation update |  Done |
+| 7 | Phase-aware control |  Done (untuned schedule) |
+| 8 | Periodic refresh |  Done (reliability tracking deferred) |
+| — | Orchestration loop |  Done, smoke-tested only |
 
 ## Environment
 
@@ -124,6 +124,4 @@ A few things worth knowing if you're reading the code:
 - **A round-scoped logits cache** (built fresh each round, shared across all 8 nodes' Stage 5/6 calls) ensures every node scores against a consistent round-start snapshot of weights, matching the paper's "parallel" semantics rather than letting an earlier node's in-round update leak into a later node's neighbor lookup.
 - A real bug was caught and fixed where `Stage 5` independently reloaded the phase-control config and ignored an orchestration-loop `--rounds` override, causing logged phase parameters to disagree with what was actually applied during training. See `patch/apply_patch.py` and commit `80e8d61`.
 
-## License
 
-_(add if applicable)_
