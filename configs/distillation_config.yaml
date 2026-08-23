@@ -1,0 +1,21 @@
+# configs/distillation_config.yaml
+#
+# Stage 6 (distillation update) parameters.
+#
+# NOTE: lambda_t and tau_t are now owned by Stage 7
+# (node/phase_control.py / configs/phase_control_config.yaml) and are no
+# longer read from this file -- run_distillation_round() fetches them
+# internally via Stage 5's phase_params for the given round_num.
+
+partitions_dir: datasets/partitions/alpha_1
+data_root: datasets/cifar10_raw
+log_dir: logs
+weights_dir: logs/weights
+model_name: simple_cnn
+num_classes: 10
+seed: 42
+batch_size: 32
+lr: 0.01
+
+reference_batch_size: 100
+epochs_per_round: 2

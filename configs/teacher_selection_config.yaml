@@ -2,12 +2,12 @@
 #
 # Stage 5 (teacher selection) parameters.
 #
-# IMPORTANT: d_min, d_max, and the U_i(j) weights below are STATIC
-# PLACEHOLDERS. Per the paper (Section IV-C / Stage 7), these should be
-# adaptive functions of training round t, updated by the phase controller
-# (Stage 7 - not yet built). Until Stage 7 exists, Stage 5 reads them as
-# fixed values from this file so it can be implemented and tested in
-# isolation. Do not treat these numbers as tuned or final.
+# NOTE: d_min, d_max, and w_cost^t are now owned by Stage 7
+# (node/phase_control.py / configs/phase_control_config.yaml) and are no
+# longer read from this file -- select_teacher() fetches them internally
+# via phase_control.get_phase_params(round_num, T, phase_cfg). Only w_u,
+# w_c, w_r remain here, since the paper keeps those three fixed constants
+# (only w_cost^t is phase-adaptive).
 
 reference_batch_size: 100
 data_root: datasets/cifar10_raw
@@ -16,25 +16,10 @@ model_name: simple_cnn
 num_classes: 10
 seed: 42
 
-# Critical Disagreement Band [d_min, d_max] - placeholder, mid-range values
-# roughly spanning the observed diversity_matrix values (~0.35-0.60) from
-# the last verified Stage 4 run, just so the band admits a plausible subset
-# rather than being arbitrary. Real values belong to Stage 7.
-d_min: 0.35
-d_max: 0.55
-
-# U_i(j) = w_u*util + w_c*conf + w_cost*cost_score + w_r*rel  (Eq. 3)
-# All weights non-negative per the paper (Table I / Eq. 3: w_u, w_c, w_r,
-# w_cost^t >= 0). cost_score is NOT peer_scoring.py's raw hop-based cost --
-# teacher_selection.py normalizes it into a [0,1] "cheapness" score first
-# (1.0 = free/0 hops, 0.0 = max hops), matching the paper's stated
-# convention that cost(i,j) is oriented so higher = cheaper. This is what
-# lets w_cost stay positive and bounded, consistent with Assumption A5.
-# Placeholder equal-ish weighting; w_cost is written w_cost_t in the paper
-# because it's phase-dependent (Stage 7) -- until then it's a constant.
+# U_i(j) = w_u*util + w_c*conf + w_cost^t*cost_score + w_r*rel  (Eq. 3)
+# w_u, w_c, w_r are fixed non-negative constants per the paper.
 w_u: 1.0
 w_c: 1.0
-w_cost: 0.1
 w_r: 1.0
 
 hop_distance_default: 1

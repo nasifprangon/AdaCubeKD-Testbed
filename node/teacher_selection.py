@@ -15,12 +15,11 @@ If F_i^t is non-empty, i picks the highest-utility neighbor as its teacher:
 using U_i(j) = w_u*util_i(j) + w_c*conf(j) + w_cost^t*cost_score(i,j) +
 w_r*rel(j)   (Eq. 3). Otherwise i skips distillation this round.
 
-IMPORTANT SCOPE NOTE: This module only READS d_min, d_max, and the four
-U_i(j) weights -- it does not compute them. Per the paper (Section IV-C),
-those are adaptive phase parameters owned by Stage 7 (the phase controller),
-which has not been built yet. Until then, they are read as static values
-from configs/teacher_selection_config.yaml. Do not treat the config values
-as tuned or final.
+STAGE 7 INTEGRATION: d_min^t, d_max^t, and w_cost^t are now obtained from
+node/phase_control.py's get_phase_params(round_num, T, phase_cfg), which
+implements the paper's phase-aware schedule (Section IV-C). w_u, w_c, w_r
+remain fixed constants (only w_cost^t is phase-adaptive per the paper),
+read from configs/teacher_selection_config.yaml.
 
 IMPORTANT NOTE ON d_ij: rather than reading the frozen setup-time
 diversity_matrix from results/topology.json, this module recomputes d_ij
@@ -48,6 +47,7 @@ import yaml
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from node.logit_exchange import get_reference_batch, compute_logits, load_this_node_model
 from node.peer_scoring import compute_cdb_factors
+from node import phase_control
 
 
 # ---- Config / topology loading ---------------------------------------------
@@ -78,7 +78,7 @@ def cost_to_cheapness_score(raw_cost: float, max_hops: int) -> float:
 
 # ---- Eq. (3): U_i(j) ----------------------------------------------------------
 
-def compute_utility(factors: dict, cost_score: float, cfg: dict) -> float:
+def compute_utility(factors: dict, cost_score: float, cfg: dict, w_cost: float) -> float:
     """
     U_i(j) = w_u*util_i(j) + w_c*conf(j) + w_cost*cost_score + w_r*rel(j)
 
@@ -86,31 +86,42 @@ def compute_utility(factors: dict, cost_score: float, cfg: dict) -> float:
     (keys: diversity, utility, confidence, communication_cost, reliability).
     Note diversity is deliberately NOT part of U_i(j) -- per the paper, it
     only gates eligibility via the CDB band (see select_teacher below).
+
+    w_u, w_c, w_r come from cfg (fixed constants). w_cost is passed in
+    explicitly since it is phase-adaptive (Stage 7, w_cost^t) rather than
+    a flat config value.
     """
     return (
         cfg["w_u"] * factors["utility"]
         + cfg["w_c"] * factors["confidence"]
-        + cfg["w_cost"] * cost_score
+        + w_cost * cost_score
         + cfg["w_r"] * factors["reliability"]
     )
 
 
 # ---- Stage 5 core: band filter + argmax selection -----------------------------
 
-def select_teacher(node_id: str, cfg: dict, topology: dict, hop_distances: dict = None):
+def select_teacher(node_id: str, cfg: dict, topology: dict, round_num: int = 1,
+                    hop_distances: dict = None):
     """
-    Run Stage 5 for a single client `node_id`.
+    Run Stage 5 for a single client `node_id` at round `round_num`.
+
+    d_min^t, d_max^t, and w_cost^t are obtained from Stage 7's phase
+    schedule (node/phase_control.py) for this round_num, out of the total
+    T configured in configs/phase_control_config.yaml.
 
     hop_distances: optional dict {peer_node_id: hop_distance}. Defaults to
     cfg["hop_distance_default"] for every neighbor if not provided (all
     current neighbors are direct hypercube neighbors, hop=1, until Stage 4's
     real per-pair hop distances are wired in here).
 
-    Returns (j_star, F_i_t, per_neighbor_info) where:
+    Returns (j_star, F_i_t, per_neighbor_info, phase_params) where:
       - j_star: selected teacher node_id, or None if F_i_t is empty
       - F_i_t: list of neighbor node_ids that passed the band filter
       - per_neighbor_info: dict {peer_id: {factors, cost_score, utility,
         in_band}} for every neighbor in N(i), for inspection/debugging
+      - phase_params: the full Stage 7 phase_params dict used this round
+        (band, lambda_t, tau_t, w_cost, phase_label), for logging
     """
     neighbor_ids = topology["neighbor_map"][node_id]
     reference_images = get_reference_batch(cfg["data_root"], cfg["reference_batch_size"])
@@ -118,7 +129,13 @@ def select_teacher(node_id: str, cfg: dict, topology: dict, hop_distances: dict 
     model_i = load_this_node_model(cfg, node_id)
     logits_i = compute_logits(model_i, reference_images)
 
-    d_min, d_max = cfg["d_min"], cfg["d_max"]
+    # --- Stage 7: get this round's band and cost weight ---
+    phase_cfg = phase_control.load_config()
+    T = phase_cfg["T"]
+    phase_params = phase_control.get_phase_params(round_num, T, phase_cfg)
+    d_min, d_max = phase_params["d_min"], phase_params["d_max"]
+    w_cost = phase_params["w_cost"]
+
     max_hops = cfg["hypercube_max_hops"]
 
     per_neighbor_info = {}
@@ -134,7 +151,7 @@ def select_teacher(node_id: str, cfg: dict, topology: dict, hop_distances: dict 
             logits_i, logits_j, hop_distance=hop_distance, peer_node_id=peer_id
         )
         cost_score = cost_to_cheapness_score(factors["communication_cost"], max_hops)
-        utility = compute_utility(factors, cost_score, cfg)
+        utility = compute_utility(factors, cost_score, cfg, w_cost)
         in_band = d_min <= factors["diversity"] <= d_max
 
         per_neighbor_info[peer_id] = {
@@ -148,10 +165,10 @@ def select_teacher(node_id: str, cfg: dict, topology: dict, hop_distances: dict 
             F_i_t.append(peer_id)
 
     if not F_i_t:
-        return None, F_i_t, per_neighbor_info
+        return None, F_i_t, per_neighbor_info, phase_params
 
     j_star = max(F_i_t, key=lambda p: per_neighbor_info[p]["utility"])
-    return j_star, F_i_t, per_neighbor_info
+    return j_star, F_i_t, per_neighbor_info, phase_params
 
 
 # ---- Standalone test / inspection -----------------------------------------------
@@ -161,13 +178,16 @@ if __name__ == "__main__":
     topology = load_topology()
 
     test_node_id = os.environ.get("NODE_ID", "node0")
+    test_round = int(os.environ.get("ROUND", "1"))
 
-    print(f"Running Stage 5 teacher selection for {test_node_id}...")
-    print(f"Band: [{cfg['d_min']}, {cfg['d_max']}]  "
+    print(f"Running Stage 5 teacher selection for {test_node_id}, round {test_round}...")
+
+    j_star, F_i_t, info, phase_params = select_teacher(test_node_id, cfg, topology, round_num=test_round)
+
+    print(f"Phase: {phase_params['phase_label']} (t/T={phase_params['round_frac']:.3f})  "
+          f"Band: [{phase_params['d_min']:.3f}, {phase_params['d_max']:.3f}]  "
           f"Weights: w_u={cfg['w_u']} w_c={cfg['w_c']} "
-          f"w_cost={cfg['w_cost']} w_r={cfg['w_r']}\n")
-
-    j_star, F_i_t, info = select_teacher(test_node_id, cfg, topology)
+          f"w_cost={phase_params['w_cost']:.3f} w_r={cfg['w_r']}\n")
 
     neighbor_ids = topology["neighbor_map"][test_node_id]
     print(f"N({test_node_id}) = {neighbor_ids}\n")
