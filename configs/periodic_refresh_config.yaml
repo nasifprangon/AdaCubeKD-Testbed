@@ -1,0 +1,29 @@
+# configs/periodic_refresh_config.yaml
+#
+# Stage 8 (periodic refresh) parameters.
+#
+# IMPORTANT: R (refresh period) and drift_threshold below are STATIC
+# PLACEHOLDERS. The paper (Section III-A) says the hypercube is
+# "re-optimized only if compatibility drift exceeds a threshold" but gives
+# no formula for drift or its threshold, and no explicit value for R
+# beyond "every R rounds." These values are a documented design choice,
+# not derived from the paper's math -- untuned, same as the phase-control
+# schedule.
+
+data_root: datasets/cifar10_raw
+weights_dir: logs/weights
+model_name: simple_cnn
+num_classes: 10
+seed: 42
+
+reference_batch_size: 100
+
+# Refresh period: re-score peers every R rounds. R=5 over T=30 (see
+# configs/phase_control_config.yaml) gives 6 refresh checks per run.
+R: 5
+
+# Drift threshold: mean absolute change in d_ij across all pairs, compared
+# against the last-saved diversity_matrix. Rewire only if drift exceeds
+# this. Placeholder value -- not yet validated against observed drift
+# magnitudes on this testbed.
+drift_threshold: 0.05
