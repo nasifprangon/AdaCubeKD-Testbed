@@ -14,11 +14,23 @@ The tau_t^2 factor is the standard KD gradient-scale correction (Hinton
 et al.). If Stage 5 finds no qualifying teacher (F_i^t empty), i trains
 on local loss only this round (Algorithm 1, line 9).
 
-STAGE 7 INTEGRATION: lambda_t and tau_t are now obtained from
-node/phase_control.py's get_phase_params(round_num, T, phase_cfg), which
-implements the paper's phase-aware schedule (Section IV-C). The same
-round_num is passed through to Stage 5's select_teacher so both stages
-use a consistent phase for a given round.
+STAGE 7 INTEGRATION: lambda_t and tau_t are obtained from
+node/phase_control.py's get_phase_params(round_num, T, phase_cfg) via
+Stage 5's select_teacher, which implements the paper's phase-aware
+schedule (Section IV-C).
+
+ROUND-SCOPED LOGITS CACHE: run_distillation_round() accepts an optional
+logits_cache dict, threaded through to select_teacher() (Stage 5) and
+reused for the frozen teacher's logits here in Stage 6, avoiding a
+redundant disk load/forward pass when a teacher's logits were already
+computed earlier in the same round. See teacher_selection.py's module
+docstring for the full round-start-snapshot rationale. When
+logits_cache=None (default), behavior is unchanged from before.
+
+Returns (j_star, d_ij_to_teacher) instead of just j_star, so callers
+(e.g. controller/run_experiment.py) can log the network disagreement
+statistic D_t (Theorem 1) without a second, redundant call to
+select_teacher.
 
 This module reuses node/train.py's local-training setup (partition
 loading, model init, optimizer, CSV logging) and node/teacher_selection.py's
@@ -42,7 +54,7 @@ from models.model_loader import get_model
 from node.train import load_node_partition, load_shared_test_set, evaluate, init_log_file
 from node.logit_exchange import get_reference_batch, load_this_node_model
 from node.teacher_selection import load_config as load_teacher_selection_config
-from node.teacher_selection import load_topology, select_teacher
+from node.teacher_selection import load_topology, select_teacher, get_node_logits
 from node import phase_control
 
 
@@ -78,10 +90,6 @@ def kd_kl_loss(student_logits: torch.Tensor, teacher_probs_tau: torch.Tensor,
 
     teacher_probs_tau must already be temperature-scaled softmax probs,
     detached (no gradient through the frozen teacher).
-    torch.nn.functional.kl_div(input, target, reduction='batchmean') computes
-    mean_x sum_c target(x,c) * (log target(x,c) - input(x,c)), i.e. exactly
-    KL(target || softmax(input)) when input is given as log-probabilities --
-    which matches KL(p_j* || p_i) with student as the "input" side.
     """
     student_log_probs = temperature_log_softmax(student_logits, tau)
     kl = F.kl_div(student_log_probs, teacher_probs_tau, reduction="batchmean")
@@ -115,7 +123,9 @@ def log_distill_round(log_path: str, row: dict):
 
 # ---- Stage 6 core ---------------------------------------------------------------
 
-def run_distillation_round(node_id: str, cfg: dict, round_num: int = 1):
+def run_distillation_round(node_id: str, cfg: dict, round_num: int = 1,
+                            logits_cache: dict = None, reference_images: torch.Tensor = None,
+                            T: int = None):
     """
     Run one round of Stage 6 for a single client `node_id`:
       1. Run Stage 5 to get j* (or None), using this round's phase-controlled
@@ -125,17 +135,31 @@ def run_distillation_round(node_id: str, cfg: dict, round_num: int = 1):
          with the KD term toward j* (if any) computed on D_ref.
       4. Save updated weights back to logs/weights/{node_id}.pt, and log
          the round to logs/{node_id}.csv (stage="distill").
+
+    logits_cache / reference_images: optional, threaded through to Stage 5
+    and reused for the teacher's logits here (see module docstring).
+
+    Returns (j_star, d_ij_to_teacher): j_star is the selected teacher id
+    or None; d_ij_to_teacher is the diversity score to that teacher (for
+    D_t logging), or None if j_star is None.
     """
     device = torch.device("cpu")
+
+    if reference_images is None:
+        reference_images = get_reference_batch(cfg["data_root"], cfg["reference_batch_size"])
 
     # --- Stage 5: select teacher (band/cost weight from Stage 7 internally) ---
     ts_cfg = load_teacher_selection_config()
     topology = load_topology()
-    j_star, F_i_t, info, phase_params = select_teacher(node_id, ts_cfg, topology, round_num=round_num)
+    j_star, F_i_t, info, phase_params = select_teacher(
+        node_id, ts_cfg, topology, round_num=round_num,
+        logits_cache=logits_cache, reference_images=reference_images, T=T,
+    )
 
     lambda_t = phase_params["lambda_t"]
     tau_t = phase_params["tau_t"]
     phase_label = phase_params["phase_label"]
+    d_ij_to_teacher = info[j_star]["factors"]["diversity"] if j_star is not None else None
 
     print(f"[{node_id}] Stage 5 result: F_i^t={F_i_t}, j*={j_star}")
     print(f"[{node_id}] Stage 7 phase: {phase_label} (t/T={phase_params['round_frac']:.3f})  "
@@ -153,18 +177,12 @@ def run_distillation_round(node_id: str, cfg: dict, round_num: int = 1):
     ce_criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=cfg["lr"], momentum=0.9)
 
-    # --- Frozen teacher logits on D_ref (computed once per round; teacher
-    # does not update during i's local steps) ---
-    reference_images = get_reference_batch(cfg["data_root"], cfg["reference_batch_size"])
-
+    # --- Frozen teacher logits on D_ref (round-start snapshot; reused from
+    # the cache if Stage 5 already computed it this round) ---
     teacher_probs_tau = None
     if j_star is not None:
-        teacher_model = load_this_node_model(cfg, j_star)
-        teacher_model.to(device)
-        teacher_model.eval()
-        with torch.no_grad():
-            teacher_logits = teacher_model(reference_images.to(device))
-            teacher_probs_tau = temperature_softmax(teacher_logits, tau_t).detach()
+        teacher_logits = get_node_logits(j_star, cfg, reference_images, logits_cache)
+        teacher_probs_tau = temperature_softmax(teacher_logits, tau_t).detach()
 
     # --- Training loop ---
     log_path = os.path.join(cfg["log_dir"], f"{node_id}.csv")
@@ -234,7 +252,7 @@ def run_distillation_round(node_id: str, cfg: dict, round_num: int = 1):
     torch.save(model.state_dict(), weights_path)
     print(f"[{node_id}] Round {round_num} weights saved to {weights_path}")
 
-    return j_star
+    return j_star, d_ij_to_teacher
 
 
 if __name__ == "__main__":

@@ -21,6 +21,19 @@ implements the paper's phase-aware schedule (Section IV-C). w_u, w_c, w_r
 remain fixed constants (only w_cost^t is phase-adaptive per the paper),
 read from configs/teacher_selection_config.yaml.
 
+ROUND-SCOPED LOGITS CACHE: select_teacher() accepts an optional
+logits_cache dict. When the orchestration loop (controller/run_experiment.py)
+builds one fresh empty cache at the START of each round (before any node
+has trained that round) and passes the SAME dict to every node's call this
+round, every node scores against a consistent round-start snapshot of all
+8 nodes' weights -- matching Algorithm 1's "for each client i (parallel)
+do" semantics -- rather than a sequential loop where an earlier node's
+in-round update could leak into a later node's neighbor lookup. This also
+avoids redundant disk loads/forward passes when multiple nodes share a
+neighbor. When logits_cache=None (e.g. standalone single-node testing via
+`python node/teacher_selection.py`), behavior is unchanged from before:
+every call loads fresh from disk, no caching.
+
 IMPORTANT NOTE ON d_ij: rather than reading the frozen setup-time
 diversity_matrix from results/topology.json, this module recomputes d_ij
 LIVE for the current round via peer_scoring.compute_cdb_factors, using
@@ -60,6 +73,29 @@ def load_config(path: str = "configs/teacher_selection_config.yaml") -> dict:
 def load_topology(path: str = "results/topology.json") -> dict:
     with open(path, "r") as f:
         return json.load(f)
+
+
+# ---- Round-scoped logits cache ------------------------------------------------
+
+def get_node_logits(node_id: str, cfg: dict, reference_images: torch.Tensor,
+                     logits_cache: dict = None) -> torch.Tensor:
+    """
+    Return node_id's logits on reference_images. If logits_cache is
+    provided and already has an entry for node_id, reuse it (no disk load,
+    no forward pass). Otherwise compute fresh (loading node_id's current
+    saved weights) and, if a cache dict was provided, store the result so
+    later calls this round reuse it.
+    """
+    if logits_cache is not None and node_id in logits_cache:
+        return logits_cache[node_id]
+
+    model = load_this_node_model(cfg, node_id)
+    logits = compute_logits(model, reference_images)
+
+    if logits_cache is not None:
+        logits_cache[node_id] = logits
+
+    return logits
 
 
 # ---- Cost normalization ------------------------------------------------------
@@ -102,7 +138,8 @@ def compute_utility(factors: dict, cost_score: float, cfg: dict, w_cost: float) 
 # ---- Stage 5 core: band filter + argmax selection -----------------------------
 
 def select_teacher(node_id: str, cfg: dict, topology: dict, round_num: int = 1,
-                    hop_distances: dict = None):
+                    hop_distances: dict = None, logits_cache: dict = None,
+                    reference_images: torch.Tensor = None, T: int = None):
     """
     Run Stage 5 for a single client `node_id` at round `round_num`.
 
@@ -111,27 +148,28 @@ def select_teacher(node_id: str, cfg: dict, topology: dict, round_num: int = 1,
     T configured in configs/phase_control_config.yaml.
 
     hop_distances: optional dict {peer_node_id: hop_distance}. Defaults to
-    cfg["hop_distance_default"] for every neighbor if not provided (all
-    current neighbors are direct hypercube neighbors, hop=1, until Stage 4's
-    real per-pair hop distances are wired in here).
+    cfg["hop_distance_default"] for every neighbor if not provided.
 
-    Returns (j_star, F_i_t, per_neighbor_info, phase_params) where:
-      - j_star: selected teacher node_id, or None if F_i_t is empty
-      - F_i_t: list of neighbor node_ids that passed the band filter
-      - per_neighbor_info: dict {peer_id: {factors, cost_score, utility,
-        in_band}} for every neighbor in N(i), for inspection/debugging
-      - phase_params: the full Stage 7 phase_params dict used this round
-        (band, lambda_t, tau_t, w_cost, phase_label), for logging
+    logits_cache: optional dict for round-scoped logits reuse (see module
+    docstring). If None, every node's logits are loaded fresh from disk
+    (safe default for standalone/isolated calls).
+
+    reference_images: optional pre-loaded reference batch. If None,
+    regenerated via get_reference_batch (deterministic, so safe either
+    way, just avoids redundant reloading when called many times per round).
+
+    Returns (j_star, F_i_t, per_neighbor_info, phase_params).
     """
     neighbor_ids = topology["neighbor_map"][node_id]
-    reference_images = get_reference_batch(cfg["data_root"], cfg["reference_batch_size"])
+    if reference_images is None:
+        reference_images = get_reference_batch(cfg["data_root"], cfg["reference_batch_size"])
 
-    model_i = load_this_node_model(cfg, node_id)
-    logits_i = compute_logits(model_i, reference_images)
+    logits_i = get_node_logits(node_id, cfg, reference_images, logits_cache)
 
     # --- Stage 7: get this round's band and cost weight ---
     phase_cfg = phase_control.load_config()
-    T = phase_cfg["T"]
+    if T is None:
+        T = phase_cfg["T"]  # fallback for standalone calls without an explicit T
     phase_params = phase_control.get_phase_params(round_num, T, phase_cfg)
     d_min, d_max = phase_params["d_min"], phase_params["d_max"]
     w_cost = phase_params["w_cost"]
@@ -144,8 +182,7 @@ def select_teacher(node_id: str, cfg: dict, topology: dict, round_num: int = 1,
     for peer_id in neighbor_ids:
         hop_distance = (hop_distances or {}).get(peer_id, cfg["hop_distance_default"])
 
-        model_j = load_this_node_model(cfg, peer_id)
-        logits_j = compute_logits(model_j, reference_images)
+        logits_j = get_node_logits(peer_id, cfg, reference_images, logits_cache)
 
         factors = compute_cdb_factors(
             logits_i, logits_j, hop_distance=hop_distance, peer_node_id=peer_id
