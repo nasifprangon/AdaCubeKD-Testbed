@@ -1,0 +1,317 @@
+<title>Phased Hypercube Embedding</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: instrument panel. Controls strip, two linked views (physical | logical), step log, then inputs and phase comparison. */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --fg:#1b2230; --muted:#5d6678; --line:#d5d9e1; --phys:#c3c8d2;
+  --accent:#2d4d8f; --accent-fg:#ffffff;
+  --d1:#0f8288; --d2:#b8740f; --d3:#7b4dc0;
+  --font-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --surface:#1a2029; --fg:#e4e8ef; --muted:#9aa3b3; --line:#2f3745; --phys:#3d4656;
+  --accent:#8fb0f0; --accent-fg:#0f1520; --d1:#3cc1c6; --d2:#e8a743; --d3:#ad8cf0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --surface:#1a2029; --fg:#e4e8ef; --muted:#9aa3b3; --line:#2f3745; --phys:#3d4656;
+  --accent:#8fb0f0; --accent-fg:#0f1520; --d1:#3cc1c6; --d2:#e8a743; --d3:#ad8cf0; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:20px}
+header{display:grid;gap:6px}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--font-display);font-weight:600;font-size:30px;line-height:1.15;margin:0;text-wrap:balance}
+h2{font-family:var(--font-display);font-weight:600;font-size:18px;margin:0;text-wrap:balance}
+.lede{color:var(--muted);max-width:72ch;margin:0}
+.formula{font-family:var(--font-mono);font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 12px;width:fit-content;max-width:100%;overflow-x:auto}
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.ctl{display:grid;gap:5px}
+.ctl > span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-right:1px solid var(--line);background:transparent;color:var(--fg);font:500 13px var(--font-body);padding:7px 12px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.btn{border:1px solid var(--line);background:var(--bg);color:var(--fg);font:500 13px var(--font-body);padding:7px 12px;border-radius:6px;cursor:pointer}
+.btn:hover,.seg button:hover:not([aria-pressed="true"]){background:color-mix(in oklab,var(--accent) 10%,var(--surface))}
+.btn:disabled{opacity:.45;cursor:default}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.views{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:grid;gap:10px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.panel-head small{color:var(--muted);font-size:12px}
+svg{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:22px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
+.legend i.dash{border-top-style:dashed}
+.step-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:16px;align-items:start}
+.step-text h2{margin-bottom:6px}
+.step-text p{margin:0 0 8px;color:var(--fg);max-width:65ch}
+.step-text .note{color:var(--muted);font-size:13px}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 8px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+td.num,th.num{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+tr.grp td{background:color-mix(in oklab,var(--accent) 7%,var(--surface));font-weight:500}
+tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
+.dimtag{display:inline-block;font:500 11px var(--font-mono);padding:1px 6px;border-radius:4px;color:var(--surface)}
+.lower{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.mats{display:flex;flex-wrap:wrap;gap:18px}
+.mat{display:grid;gap:6px}
+.mat-title{font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:22px repeat(8,30px);grid-auto-rows:26px;gap:2px;font:11px var(--font-mono)}
+.grid div{display:flex;align-items:center;justify-content:center;border-radius:3px}
+.grid .hd{color:var(--muted)}
+.grid .cell{color:var(--fg);outline-offset:-2px}
+.footnote{font-size:12px;color:var(--muted);max-width:90ch;margin:0}
+@media (max-width:860px){.views,.step-panel,.lower{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:no-preference){.edge-new{animation:draw .5s ease-out}}
+@keyframes draw{from{opacity:0}to{opacity:1}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">AdaCubeKD · synthetic 8-client network · n = 8, d = 3</div>
+    <h1>Phased Hypercube Embedding</h1>
+    <p class="lede">Duan et al.'s recursive matching builds the cube one dimension at a time. AdaCubeKD keeps the procedure and changes the edge weight per phase, so the same clients form a different cube early, mid, and late in training.</p>
+    <div class="formula">W<sub>φ</sub>(i,j) = −(d̃<sub>ij</sub> − δ<sub>φ</sub>)² − β<sub>φ</sub> · ĉ<sub>ij</sub> &nbsp;&nbsp; d̃<sub>ij</sub> = √JS rescaled to [0,1] over all pairs, ĉ<sub>ij</sub> = (hops − 1) / (max hops − 1)</div>
+  </header>
+
+  <section class="controls" aria-label="Controls">
+    <div class="ctl"><span>Phase</span>
+      <div class="seg" id="phaseSeg" role="group" aria-label="Phase">
+        <button id="ph0" data-p="0" aria-pressed="true">Early</button>
+        <button id="ph1" data-p="1" aria-pressed="false">Middle</button>
+        <button id="ph2" data-p="2" aria-pressed="false">Late</button>
+      </div>
+    </div>
+    <div class="ctl"><span>Non-IID level (Dirichlet α)</span>
+      <div class="seg" id="alphaSeg" role="group" aria-label="Dirichlet alpha">
+        <button id="al0" data-a="1.0" aria-pressed="false">1.0</button>
+        <button id="al1" data-a="0.5" aria-pressed="true">0.5</button>
+        <button id="al2" data-a="0.1" aria-pressed="false">0.1</button>
+      </div>
+    </div>
+    <div class="ctl"><span>Build</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn" id="prevBtn">◀ Back</button>
+        <button class="btn" id="nextBtn">Next dimension ▶</button>
+        <button class="btn" id="allBtn">Show full cube</button>
+      </div>
+    </div>
+    <div class="ctl"><span>Network</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn" id="newBtn">New random network</button>
+        <span class="mono" id="seedLbl" style="color:var(--muted);font-size:12px"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="views">
+    <div class="panel">
+      <div class="panel-head"><h2>Physical network</h2><small>grey = physical links, color = logical cube edges</small></div>
+      <svg id="physSvg" viewBox="0 0 400 400" role="img" aria-label="Physical network with logical edges overlaid"></svg>
+      <div class="legend">
+        <span><i style="border-color:var(--d1)"></i>Dimension 1</span>
+        <span><i style="border-color:var(--d2)"></i>Dimension 2</span>
+        <span><i style="border-color:var(--d3)"></i>Dimension 3</span>
+        <span><i class="dash" style="border-color:var(--muted)"></i>relayed over 2+ hops</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Logical hypercube</h2><small>vertex label = 3-bit cube address</small></div>
+      <svg id="cubeSvg" viewBox="0 0 410 370" role="img" aria-label="Resulting logical hypercube"></svg>
+      <div class="legend"><span>Training cycles dimensions: round t pairs every client with its neighbor across dimension (t mod 3) + 1, and the pair distills both ways.</span></div>
+    </div>
+  </section>
+
+  <section class="panel step-panel" aria-live="polite">
+    <div class="step-text" id="stepText"></div>
+    <div class="tbl-wrap" id="stepTable"></div>
+  </section>
+
+  <section class="lower">
+    <div class="panel">
+      <div class="panel-head"><h2>Inputs to the embedding</h2><small>outlined cells = edges of the current cube</small></div>
+      <div class="mats">
+        <div class="mat"><div class="mat-title">√JS disagreement d<sub>ij</sub> (normalized to [0,1])</div><div class="grid" id="matD"></div></div>
+        <div class="mat"><div class="mat-title">Physical hops between clients</div><div class="grid" id="matH"></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Same network, four objectives</h2><small>averages over the 12 cube edges</small></div>
+      <div class="tbl-wrap" id="cmpTable"></div>
+      <p class="footnote">Per-round traffic: 4 pairs exchange both ways, each message 500 reference images × 10 classes × 4 B = 20 KB, multiplied by hops. Averaged over the three dimensions.</p>
+    </div>
+  </section>
+
+  <p class="footnote">Synthetic data. Clients get a Dirichlet(α) label split over 10 classes. Each client's average reference-set prediction after warm-up is modeled as its label histogram mixed 65/35 with uniform. Physical positions are random in a unit square, linked when closer than 0.36 (plus bridging links if the graph is disconnected). Matching follows Duan et al.: virtual nodes are matched by maximum summed weight. Member alignment tries every bit-flip alignment (2 at dimension 2, 4 at dimension 3) instead of pairing randomly; flips keep each dimension's edges together, which the round-robin schedule relies on. In training, d<sub>ij</sub> is re-measured at each phase boundary; this demo uses one snapshot for all phases.</p>
+</div>
+
+<script>
+(function(){
+const N=8, D=3, K=10, PAYLOAD_KB=20;
+const PHASES=[
+  {name:"Early", key:"early", desc:"similar and cheap", beta:0.15, deltaQ:0},
+  {name:"Middle", key:"mid", desc:"dissimilar, inside the band", beta:0.15, deltaQ:0.75},
+  {name:"Late", key:"late", desc:"cheapest to reach", beta:2.0, deltaQ:0}
+];
+const DUAN={name:"Duan (similarity only)", beta:0, deltaQ:0};
+const state={phase:0, alpha:0.5, seed:7, step:3};
+
+function rng(seed){let a=seed>>>0;return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function normal(r){let u=0,v=0;while(u===0)u=r();while(v===0)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+function gamma(r,a){if(a<1){return gamma(r,a+1)*Math.pow(r(),1/a);}const d=a-1/3,c=1/Math.sqrt(9*d);for(;;){let x,v;do{x=normal(r);v=1+c*x;}while(v<=0);v=v*v*v;const u=r();if(u<1-0.0331*x*x*x*x)return d*v;if(Math.log(u)<0.5*x*x+d*(1-v+Math.log(v)))return d*v;}}
+function dirichlet(r,a,n){const g=[];let s=0;for(let i=0;i<n;i++){const x=gamma(r,a)+1e-12;g.push(x);s+=x;}return g.map(x=>x/s);}
+
+function build(seed,alpha){
+  const r=rng(seed*7919+Math.round(alpha*100));
+  // physical positions + links
+  const pos=[];for(let i=0;i<N;i++)pos.push([0.07+0.86*r(),0.07+0.86*r()]);
+  const dist=(i,j)=>Math.hypot(pos[i][0]-pos[j][0],pos[i][1]-pos[j][1]);
+  const adj=Array.from({length:N},()=>new Set());const links=[];
+  for(let i=0;i<N;i++)for(let j=i+1;j<N;j++)if(dist(i,j)<0.36){adj[i].add(j);adj[j].add(i);links.push([i,j]);}
+  // bridge components
+  for(;;){const comp=Array(N).fill(-1);let c=0;for(let s=0;s<N;s++){if(comp[s]>=0)continue;const q=[s];comp[s]=c;while(q.length){const u=q.shift();adj[u].forEach(v=>{if(comp[v]<0){comp[v]=c;q.push(v);}});}c++;}
+    if(c===1)break;let best=null;for(let i=0;i<N;i++)for(let j=0;j<N;j++)if(comp[i]===0&&comp[j]!==0){const dd=dist(i,j);if(!best||dd<best[2])best=[i,j,dd];}
+    adj[best[0]].add(best[1]);adj[best[1]].add(best[0]);links.push([best[0],best[1]]);}
+  const hops=[];for(let s=0;s<N;s++){const h=Array(N).fill(Infinity);h[s]=0;const q=[s];while(q.length){const u=q.shift();adj[u].forEach(v=>{if(h[v]===Infinity){h[v]=h[u]+1;q.push(v);}});}hops.push(h);}
+  // label split and synthetic predictions
+  const hist=Array.from({length:N},()=>Array(K).fill(0));
+  for(let c=0;c<K;c++){const p=dirichlet(r,alpha,N);for(let i=0;i<N;i++)hist[i][c]=p[i];}
+  const pred=hist.map(h=>{const s=h.reduce((a,b)=>a+b,0);return h.map(x=>0.65*x/s+0.35/K);});
+  const kl=(p,q)=>p.reduce((a,pi,k)=>a+(pi>0?pi*Math.log(pi/q[k]):0),0);
+  const dmat=[];for(let i=0;i<N;i++){dmat.push([]);for(let j=0;j<N;j++){const m=pred[i].map((x,k)=>(x+pred[j][k])/2);const js=0.5*kl(pred[i],m)+0.5*kl(pred[j],m);dmat[i].push(Math.sqrt(Math.max(js,0))/Math.sqrt(Math.LN2));}}
+  let maxH=0;for(let i=0;i<N;i++)for(let j=0;j<N;j++)maxH=Math.max(maxH,hops[i][j]);
+  const vals=[];for(let i=0;i<N;i++)for(let j=i+1;j<N;j++)vals.push(dmat[i][j]);vals.sort((a,b)=>a-b);
+  const dLo=vals[0],dHi=vals[vals.length-1];const dn=(i,j)=>(dmat[i][j]-dLo)/Math.max(1e-9,dHi-dLo);
+  const pct=q=>(vals[Math.min(vals.length-1,Math.floor(q*(vals.length-1)+0.5))]-dLo)/Math.max(1e-9,dHi-dLo);
+  return {pos,links,hops,dmat,dn,maxH,pct};
+}
+
+function bestMatching(n,w){ // exact max-weight perfect matching (Blossom in general; enumeration at n<=8)
+  let best=null,bestV=-Infinity;const used=Array(n).fill(false),cur=[];
+  (function rec(v){let i=0;while(i<n&&used[i])i++;if(i===n){if(v>bestV){bestV=v;best=cur.slice();}return;}used[i]=true;
+    for(let j=i+1;j<n;j++){if(used[j])continue;used[j]=true;cur.push([i,j]);rec(v+w(i,j));cur.pop();used[j]=false;}used[i]=false;})(0);
+  return best;
+}
+function perms(m){if(m===0)return[[]];const out=[];(function rec(a,rest){if(!rest.length){out.push(a);return;}rest.forEach((x,k)=>rec(a.concat([x]),rest.filter((_,t)=>t!==k)));})([],[...Array(m).keys()]);return out;}
+function autos(m){const out=[];for(let x=0;x<(1<<m);x++)out.push(b=>b^x);return out;} // bit flips only: keeps each dimension's edges together
+
+function embed(net,phaseCfg){
+  const delta=net.pct(phaseCfg.deltaQ);
+  const W=(i,j)=>-Math.pow(net.dn(i,j)-delta,2)-phaseCfg.beta*((net.hops[i][j]-1)/Math.max(1,net.maxH-1));
+  let groups=[...Array(N).keys()].map(i=>({members:[i],lab:{[i]:0}}));
+  const levels=[];
+  for(let k=1;k<=D;k++){
+    const agg=(a,b)=>{let s=0;a.members.forEach(u=>b.members.forEach(v=>s+=W(u,v)));return s;};
+    const M=bestMatching(groups.length,(x,y)=>agg(groups[x],groups[y]));
+    const fs=autos(k-1);const next=[];const lv={k,pairs:[]};
+    M.forEach(([x,y])=>{
+      let A=groups[x],B=groups[y];if(Math.min(...B.members)<Math.min(...A.members))[A,B]=[B,A];
+      const byLab={};B.members.forEach(v=>byLab[B.lab[v]]=v);
+      let bestF=null,bestS=-Infinity;
+      fs.forEach(g=>{let s=0;const e=[];A.members.forEach(u=>{const v=byLab[g(A.lab[u])];s+=W(u,v);e.push([u,v]);});if(s>bestS){bestS=s;bestF=e;}});
+      const lab={};bestF.forEach(([u,v])=>{lab[u]=A.lab[u];lab[v]=A.lab[u]|(1<<(k-1));});
+      next.push({members:A.members.concat(B.members),lab});
+      lv.pairs.push({A:A.members.slice(),B:B.members.slice(),agg:agg(A,B),edges:bestF.map(([u,v])=>({u,v,d:net.dmat[u][v],h:net.hops[u][v],w:W(u,v)}))});
+    });
+    levels.push(lv);groups=next;
+  }
+  const label=groups[0].lab;const edges=[];levels.forEach(l=>l.pairs.forEach(p=>p.edges.forEach(e=>edges.push({...e,dim:l.k}))));
+  const meanD=edges.reduce((a,e)=>a+e.d,0)/edges.length,meanH=edges.reduce((a,e)=>a+e.h,0)/edges.length;
+  let rounds=0;for(let k=1;k<=D;k++)rounds+=edges.filter(e=>e.dim===k).reduce((a,e)=>a+2*PAYLOAD_KB*e.h,0);
+  return {delta,beta:phaseCfg.beta,levels,label,edges,meanD,meanH,perRound:rounds/D};
+}
+
+// rendering
+const NS="http://www.w3.org/2000/svg";
+const el=(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;};
+const dimVar=k=>`var(--d${k})`;
+let net,results,duan;
+
+function recompute(){
+  net=build(state.seed,state.alpha);
+  results=PHASES.map(p=>embed(net,p));duan=embed(net,DUAN);
+  document.getElementById("seedLbl").textContent="seed "+state.seed;
+}
+function render(){
+  const res=results[state.phase];
+  drawPhys(res);drawCube(res);drawStep(res);drawMats(res);drawCmp();
+  document.getElementById("prevBtn").disabled=state.step===0;
+  document.getElementById("nextBtn").disabled=state.step===D;
+  document.getElementById("allBtn").disabled=state.step===D;
+}
+function drawPhys(res){
+  const svg=document.getElementById("physSvg");svg.innerHTML="";
+  const P=i=>[20+360*net.pos[i][0],20+360*net.pos[i][1]];
+  net.links.forEach(([i,j])=>{const a=P(i),b=P(j);el("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:"var(--phys)","stroke-width":5,"stroke-linecap":"round"},svg);});
+  res.edges.filter(e=>e.dim<=state.step).forEach(e=>{
+    const a=P(e.u),b=P(e.v);const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;const dx=b[0]-a[0],dy=b[1]-a[1];const L=Math.hypot(dx,dy)||1;const off=14+4*e.dim;
+    const cx=mx-dy/L*off,cy=my+dx/L*off;
+    el("path",{d:`M${a[0]},${a[1]} Q${cx},${cy} ${b[0]},${b[1]}`,fill:"none",stroke:dimVar(e.dim),"stroke-width":e.dim===state.step?3.2:2,"stroke-dasharray":e.h>1?"6 5":"none",opacity:e.dim===state.step?1:0.75,class:e.dim===state.step?"edge-new":""},svg);
+  });
+  for(let i=0;i<N;i++){const p=P(i);el("circle",{cx:p[0],cy:p[1],r:15,fill:"var(--surface)",stroke:"var(--fg)","stroke-width":1.5},svg);
+    const t=el("text",{x:p[0],y:p[1]+4,"text-anchor":"middle","font-size":12,"font-family":"IBM Plex Mono, monospace",fill:"var(--fg)"},svg);t.textContent="C"+i;}
+}
+function cubeXY(lab){const b0=lab&1,b1=lab>>1&1,b2=lab>>2&1;return[75+180*b0+95*b2,300-180*b1-75*b2];}
+function drawCube(res){
+  const svg=document.getElementById("cubeSvg");svg.innerHTML="";
+  // faint full-cube scaffold
+  for(let a=0;a<8;a++)for(let k=0;k<3;k++){const b=a^(1<<k);if(b<a)continue;const p=cubeXY(a),q=cubeXY(b);el("line",{x1:p[0],y1:p[1],x2:q[0],y2:q[1],stroke:"var(--line)","stroke-width":1.5,"stroke-dasharray":"3 4"},svg);}
+  res.edges.filter(e=>e.dim<=state.step).forEach(e=>{const p=cubeXY(res.label[e.u]),q=cubeXY(res.label[e.v]);
+    el("line",{x1:p[0],y1:p[1],x2:q[0],y2:q[1],stroke:dimVar(e.dim),"stroke-width":e.dim===state.step?4:3,"stroke-dasharray":e.h>1?"8 5":"none",class:e.dim===state.step?"edge-new":""},svg);});
+  for(let i=0;i<N;i++){const lab=res.label[i];const p=cubeXY(lab);
+    el("circle",{cx:p[0],cy:p[1],r:19,fill:"var(--surface)",stroke:"var(--fg)","stroke-width":1.5},svg);
+    const t=el("text",{x:p[0],y:p[1]+4,"text-anchor":"middle","font-size":13,"font-weight":500,"font-family":"IBM Plex Mono, monospace",fill:"var(--fg)"},svg);t.textContent="C"+i;
+    const top=(lab>>1&1)===1;const s=el("text",{x:p[0],y:top?p[1]-26:p[1]+35,"text-anchor":"middle","font-size":11,"font-family":"IBM Plex Mono, monospace",fill:"var(--muted)"},svg);
+    s.textContent=[(lab>>2)&1,(lab>>1)&1,lab&1].join("");}
+}
+const f2=x=>x.toFixed(2);
+function drawStep(res){
+  const ph=PHASES[state.phase];const box=document.getElementById("stepText"),tb=document.getElementById("stepTable");
+  const params=`<p class="note mono">${ph.name}: δ = ${f2(res.delta)}${ph.deltaQ>0?" (75th percentile of d̃<sub>ij</sub>)":""}, β = ${res.beta}</p>`;
+  if(state.step===0){
+    box.innerHTML=`<h2>Step 0 · Inputs</h2><p>After warm-up, every pair of clients has a disagreement d<sub>ij</sub> (from shared reference-set predictions) and a physical hop count. These two matrices are all the embedding needs.</p><p>The ${ph.name.toLowerCase()} phase targets <b>${ph.desc}</b> neighbors.</p>${params}<p class="note">Press “Next dimension” to run the first matching.</p>`;
+    tb.innerHTML="";return;}
+  const lv=res.levels[state.step-1];const sizes=["clients","pairs","squares"],out=["pairs","squares","one cube"];
+  box.innerHTML=`<h2>Step ${state.step} · Dimension ${state.step}</h2>
+  <p>${N>>(state.step-1)} ${sizes[state.step-1]} are matched two by two using maximum-weight matching, where the weight between two groups is the sum of W over all their member pairs. Result: ${out[state.step-1]}.</p>
+  ${state.step>1?`<p>Within each match, members are aligned so the new edges keep the cube structure. The demo tries every valid alignment and keeps the one with the highest total W.</p>`:""}
+  ${params}`;
+  let h=`<table><thead><tr><th>Edge (dimension ${state.step})</th><th class="num">d<sub>ij</sub></th><th class="num">hops</th><th class="num">W</th></tr></thead><tbody>`;
+  lv.pairs.forEach(p=>{h+=`<tr class="grp"><td>{${p.A.map(x=>"C"+x).join(",")}} ↔ {${p.B.map(x=>"C"+x).join(",")}}</td><td></td><td></td><td class="num">Σ ${f2(p.agg)}</td></tr>`;
+    p.edges.forEach(e=>{h+=`<tr><td class="mono"><span class="dimtag" style="background:${dimVar(state.step)}">d${state.step}</span> C${e.u} – C${e.v}</td><td class="num">${f2(e.d)}</td><td class="num">${e.h}</td><td class="num">${f2(e.w)}</td></tr>`;});});
+  tb.innerHTML=h+"</tbody></table>";
+}
+function drawMats(res){
+  const edgeDim={};res.edges.filter(e=>e.dim<=state.step).forEach(e=>{edgeDim[e.u+","+e.v]=e.dim;edgeDim[e.v+","+e.u]=e.dim;});
+  const mk=(id,val,fmt,scale)=>{const g=document.getElementById(id);let h=`<div></div>`;for(let j=0;j<N;j++)h+=`<div class="hd">C${j}</div>`;
+    for(let i=0;i<N;i++){h+=`<div class="hd">C${i}</div>`;for(let j=0;j<N;j++){if(i===j){h+=`<div class="cell" style="color:var(--muted)">·</div>`;continue;}
+      const v=val(i,j),pct=Math.round(8+70*scale(v));const dm=edgeDim[i+","+j];
+      h+=`<div class="cell" style="background:color-mix(in oklab,var(--accent) ${pct}%,var(--surface));${pct>48?"color:var(--accent-fg);":""}${dm?`outline:2px solid var(--d${dm});`:""}">${fmt(v)}</div>`;}}
+    g.innerHTML=h;};
+  mk("matD",(i,j)=>net.dmat[i][j],v=>v.toFixed(2).replace(/^0/,""),v=>v);
+  mk("matH",(i,j)=>net.hops[i][j],v=>v,v=>(v-1)/Math.max(1,net.maxH-1));
+}
+function drawCmp(){
+  const rows=[{n:"Duan (similarity only)",r:duan,i:-1}].concat(PHASES.map((p,i)=>({n:`${p.name}: ${p.desc}`,r:results[i],i})));
+  let h=`<table><thead><tr><th>Objective</th><th class="num">mean d<sub>ij</sub></th><th class="num">mean hops</th><th class="num">KB / round</th></tr></thead><tbody>`;
+  rows.forEach(x=>{h+=`<tr class="${x.i===state.phase?"cur":""}"><td>${x.n}</td><td class="num">${f2(x.r.meanD)}</td><td class="num">${f2(x.r.meanH)}</td><td class="num">${Math.round(x.r.perRound)}</td></tr>`;});
+  document.getElementById("cmpTable").innerHTML=h+"</tbody></table>";
+}
+
+document.querySelectorAll("#phaseSeg button").forEach(b=>b.addEventListener("click",()=>{state.phase=+b.dataset.p;document.querySelectorAll("#phaseSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));render();}));
+document.querySelectorAll("#alphaSeg button").forEach(b=>b.addEventListener("click",()=>{state.alpha=+b.dataset.a;document.querySelectorAll("#alphaSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));recompute();render();}));
+document.getElementById("prevBtn").addEventListener("click",()=>{if(state.step>0){state.step--;render();}});
+document.getElementById("nextBtn").addEventListener("click",()=>{if(state.step<D){state.step++;render();}});
+document.getElementById("allBtn").addEventListener("click",()=>{state.step=D;render();});
+document.getElementById("newBtn").addEventListener("click",()=>{state.seed=1+Math.floor(Math.random()*9999);state.step=0;recompute();render();});
+recompute();render();
+})();
+</script>
