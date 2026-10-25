@@ -69,6 +69,11 @@ tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
 .grid .hd{color:var(--muted)}
 .grid .cell{color:var(--fg);outline-offset:-2px}
 .footnote{font-size:12px;color:var(--muted);max-width:90ch;margin:0}
+.defs dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 18px;margin:0}
+.defs dt{font-family:var(--font-mono);font-weight:500;white-space:nowrap}
+.defs dd{margin:0;max-width:80ch}
+.defs dd b{font-weight:600}
+@media (max-width:520px){.defs dl{grid-template-columns:minmax(0,1fr)}.defs dd{margin-bottom:6px}}
 @media (max-width:860px){.views,.step-panel,.lower{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:no-preference){.edge-new{animation:draw .5s ease-out}}
 @keyframes draw{from{opacity:0}to{opacity:1}}
@@ -79,8 +84,30 @@ tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
     <div class="eyebrow">AdaCubeKD · synthetic 8-client network · n = 8, d = 3</div>
     <h1>Phased Hypercube Embedding</h1>
     <p class="lede">Duan et al.'s recursive matching builds the cube one dimension at a time. AdaCubeKD keeps the procedure and changes the edge weight per phase, so the same clients form a different cube early, mid, and late in training.</p>
-    <div class="formula">W<sub>φ</sub>(i,j) = −(d̃<sub>ij</sub> − δ<sub>φ</sub>)² − β<sub>φ</sub> · ĉ<sub>ij</sub> &nbsp;&nbsp; d̃<sub>ij</sub> = √JS rescaled to [0,1] over all pairs, ĉ<sub>ij</sub> = (hops − 1) / (max hops − 1)</div>
   </header>
+
+  <section class="panel defs" aria-label="Definitions">
+    <div class="panel-head"><h2>What the symbols mean</h2><small>i and j are any two clients</small></div>
+    <div class="formula">W<sub>φ</sub>(i,j) = −(d̃<sub>ij</sub> − δ<sub>φ</sub>)² − β<sub>φ</sub> · ĉ<sub>ij</sub></div>
+    <dl>
+      <dt>d<sub>ij</sub></dt>
+      <dd><b>Disagreement.</b> Clients i and j run their models on the same shared reference images (no private data leaves either client) and compare the predicted class probabilities. d<sub>ij</sub> is the square root of the Jensen–Shannon divergence between the two predictions, averaged over the images. 0 means they predict identically; larger means they disagree more.</dd>
+      <dt>d̃<sub>ij</sub></dt>
+      <dd>The same disagreement rescaled across all 28 pairs, so the most similar pair scores 0 and the most different pair scores 1.</dd>
+      <dt>c<sub>ij</sub></dt>
+      <dd><b>Communication cost.</b> Hops on the shortest physical path between i and j, times the message size (20 KB of predictions). A direct link costs 1 hop; a message relayed through two other clients costs 3.</dd>
+      <dt>ĉ<sub>ij</sub></dt>
+      <dd>The cost rescaled to [0,1]: a direct 1-hop link scores 0 and the longest path in the network scores 1.</dd>
+      <dt>W<sub>φ</sub>(i,j)</dt>
+      <dd><b>Edge weight.</b> How much we want i and j to be cube neighbors in phase φ. It is never positive: it subtracts how far d̃<sub>ij</sub> is from the target and how expensive the link is, so 0 is the best possible score. The matching picks the pairs with the largest total W.</dd>
+      <dt>δ<sub>φ</sub></dt>
+      <dd><b>Disagreement target.</b> 0 in Early and Late (prefer similar clients). In Middle it is the 75th percentile of d̃ (prefer clients that disagree more).</dd>
+      <dt>β<sub>φ</sub></dt>
+      <dd><b>Cost weight.</b> How much an extra hop hurts. 0.15 in Early and Middle, 2.0 in Late, where cost dominates.</dd>
+      <dt>Group weight</dt>
+      <dd>From dimension 2 on, the units being matched are pairs and squares. The weight between two groups is the sum of W over every client in one group paired with every client in the other.</dd>
+    </dl>
+  </section>
 
   <section class="controls" aria-label="Controls">
     <div class="ctl"><span>Phase</span>
