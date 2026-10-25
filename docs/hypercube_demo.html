@@ -91,7 +91,7 @@ tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
   <header>
     <div class="eyebrow">AdaCubeKD · synthetic 8-client network · n = 8, d = 3</div>
     <h1>Phased Hypercube Embedding</h1>
-    <p class="lede">Duan et al.'s recursive matching builds the cube one dimension at a time. AdaCubeKD keeps the procedure and changes the edge weight per phase, so the same clients form a different cube early, mid, and late in training.</p>
+    <p class="lede">Duan et al.'s recursive matching builds the cube one dimension at a time. AdaCubeKD keeps the procedure and changes the link penalty per phase, so the same clients form a different cube early, mid, and late in training.</p>
   </header>
 
   <section class="panel" aria-label="How the cube is built">
@@ -136,7 +136,7 @@ tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
 
   <section class="panel defs" aria-label="Definitions">
     <div class="panel-head"><h2>What the symbols mean</h2><small>i and j are any two clients</small></div>
-    <div class="formula">W<sub>φ</sub>(i,j) = −(d̃<sub>ij</sub> − δ<sub>φ</sub>)² − β<sub>φ</sub> · ĉ<sub>ij</sub></div>
+    <div class="formula">P<sub>φ</sub>(i,j) = (d̃<sub>ij</sub> − δ<sub>φ</sub>)² + β<sub>φ</sub> · ĉ<sub>ij</sub> &nbsp;&nbsp; lower is better</div>
     <dl>
       <dt>d<sub>ij</sub></dt>
       <dd><b>Disagreement.</b> Clients i and j run their models on the same shared reference images (no private data leaves either client) and compare the predicted class probabilities. d<sub>ij</sub> is the square root of the Jensen–Shannon divergence between the two predictions, averaged over the images. 0 means they predict identically; larger means they disagree more.</dd>
@@ -146,14 +146,14 @@ tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
       <dd><b>Communication cost.</b> Hops on the shortest physical path between i and j, times the message size (20 KB of predictions). A direct link costs 1 hop; a message relayed through two other clients costs 3.</dd>
       <dt>ĉ<sub>ij</sub></dt>
       <dd>The cost rescaled to [0,1]: a direct 1-hop link scores 0 and the longest path in the network scores 1.</dd>
-      <dt>W<sub>φ</sub>(i,j)</dt>
-      <dd><b>Edge weight.</b> How much we want i and j to be cube neighbors in phase φ. It is never positive: it subtracts how far d̃<sub>ij</sub> is from the target and how expensive the link is, so 0 is the best possible score. The matching picks the pairs with the largest total W.</dd>
+      <dt>P<sub>φ</sub>(i,j)</dt>
+      <dd><b>Link penalty.</b> How bad it would be to make i and j cube neighbors in phase φ. It adds how far d̃<sub>ij</sub> is from the target and how expensive the link is, so 0 is a perfect link. The matching picks the pairs with the smallest total P.</dd>
       <dt>δ<sub>φ</sub></dt>
       <dd><b>Disagreement target.</b> 0 in Early and Late (prefer similar clients). In Middle it is the 75th percentile of d̃ (prefer clients that disagree more).</dd>
       <dt>β<sub>φ</sub></dt>
       <dd><b>Cost weight.</b> How much an extra hop hurts. 0.15 in Early and Middle, 2.0 in Late, where cost dominates.</dd>
-      <dt>Group weight</dt>
-      <dd>From dimension 2 on, the units being matched are pairs and squares. The weight between two groups is the sum of W over every client in one group paired with every client in the other.</dd>
+      <dt>Group penalty</dt>
+      <dd>From dimension 2 on, the units being matched are pairs and squares. The penalty between two groups is the sum of P over every client in one group paired with every client in the other.</dd>
     </dl>
   </section>
 
@@ -360,10 +360,10 @@ function drawStep(res){
       txt=`<h3>Step 0 · Inputs</h3><p>After warm-up, every pair of clients has a disagreement d̃ (from shared reference-set predictions) and a physical hop count, shown in the two matrices below. These are all the build needs.</p><p>The ${ph.name.toLowerCase()} phase looks for <b>${ph.desc}</b> neighbors.</p>${params}`;
     }else{
       const lv=res.levels[k-1];
-      txt=`<h3>Step ${k} · Dimension ${k}</h3><p>${N>>(k-1)} ${sizes[k-1]} are matched two at a time by maximum-weight matching. The weight between two groups is the sum of W over all their member pairs (Σ in the table). Result: ${out[k-1]}.</p>${k>1?`<p class="note">Each matched pair of groups is then lined up corner to corner. Every valid alignment is tried, and the one with the highest total W gives the ${lv.pairs[0].edges.length*lv.pairs.length} new edges listed.</p>`:`<p class="note">Each match becomes one edge of dimension 1.</p>`}`;
-      tbl=`<div class="tbl-wrap"><table><thead><tr><th>Match → new edges</th><th class="num">d̃</th><th class="num">hops</th><th class="num">W</th></tr></thead><tbody>`;
-      lv.pairs.forEach(p=>{tbl+=`<tr class="grp"><td>{${p.A.map(x=>"C"+x).join(",")}} ↔ {${p.B.map(x=>"C"+x).join(",")}}</td><td></td><td></td><td class="num">Σ ${f2(p.agg)}</td></tr>`;
-        p.edges.forEach(e=>{tbl+=`<tr><td class="mono"><span class="dimtag" style="background:${dimVar(k)}">d${k}</span> C${e.u} – C${e.v}</td><td class="num">${f2(e.dt)}</td><td class="num">${e.h}</td><td class="num">${f2(e.w)}</td></tr>`;});});
+      txt=`<h3>Step ${k} · Dimension ${k}</h3><p>${N>>(k-1)} ${sizes[k-1]} are matched two at a time by minimum-penalty matching. The penalty between two groups is the sum of P over all their member pairs (Σ in the table). Result: ${out[k-1]}.</p>${k>1?`<p class="note">Each matched pair of groups is then lined up corner to corner. Every valid alignment is tried, and the one with the lowest total P gives the ${lv.pairs[0].edges.length*lv.pairs.length} new edges listed.</p>`:`<p class="note">Each match becomes one edge of dimension 1.</p>`}`;
+      tbl=`<div class="tbl-wrap"><table><thead><tr><th>Match → new edges</th><th class="num">d̃</th><th class="num">hops</th><th class="num">P</th></tr></thead><tbody>`;
+      lv.pairs.forEach(p=>{tbl+=`<tr class="grp"><td>{${p.A.map(x=>"C"+x).join(",")}} ↔ {${p.B.map(x=>"C"+x).join(",")}}</td><td></td><td></td><td class="num">Σ ${f2(-p.agg)}</td></tr>`;
+        p.edges.forEach(e=>{tbl+=`<tr><td class="mono"><span class="dimtag" style="background:${dimVar(k)}">d${k}</span> C${e.u} – C${e.v}</td><td class="num">${f2(e.dt)}</td><td class="num">${e.h}</td><td class="num">${f2(-e.w)}</td></tr>`;});});
       tbl+="</tbody></table></div>";
     }
     h+=`<div class="stp ${cls}" role="button" tabindex="0" data-k="${k}" aria-pressed="${k===state.step}"><div>${txt}</div><div>${tbl}</div></div>`;
