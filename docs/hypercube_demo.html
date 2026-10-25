@@ -86,6 +86,46 @@ tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
     <p class="lede">Duan et al.'s recursive matching builds the cube one dimension at a time. AdaCubeKD keeps the procedure and changes the edge weight per phase, so the same clients form a different cube early, mid, and late in training.</p>
   </header>
 
+  <section class="panel" aria-label="How the cube is built">
+    <div class="panel-head"><h2>How the cube is built</h2><small>each step adds one dimension of edges</small></div>
+    <div class="tbl-wrap">
+    <svg class="build" viewBox="0 0 680 290" role="img" aria-label="Eight clients become four pairs, then two squares, then one cube" style="min-width:560px">
+      <g stroke="var(--d1)" stroke-width="3" fill="none">
+        <line x1="212" y1="170" x2="272" y2="170"/><line x1="212" y1="110" x2="272" y2="110"/><line x1="247" y1="135" x2="307" y2="135"/><line x1="247" y1="75" x2="307" y2="75"/>
+        <line x1="372" y1="170" x2="432" y2="170"/><line x1="372" y1="110" x2="432" y2="110"/><line x1="407" y1="135" x2="467" y2="135"/><line x1="407" y1="75" x2="467" y2="75"/>
+        <line x1="532" y1="170" x2="592" y2="170"/><line x1="532" y1="110" x2="592" y2="110"/><line x1="567" y1="135" x2="627" y2="135"/><line x1="567" y1="75" x2="627" y2="75"/>
+      </g>
+      <g stroke="var(--d2)" stroke-width="3" stroke-dasharray="6 3" fill="none">
+        <line x1="372" y1="170" x2="372" y2="110"/><line x1="432" y1="170" x2="432" y2="110"/><line x1="407" y1="135" x2="407" y2="75"/><line x1="467" y1="135" x2="467" y2="75"/>
+        <line x1="532" y1="170" x2="532" y2="110"/><line x1="592" y1="170" x2="592" y2="110"/><line x1="567" y1="135" x2="567" y2="75"/><line x1="627" y1="135" x2="627" y2="75"/>
+      </g>
+      <g stroke="var(--d3)" stroke-width="3" stroke-dasharray="2 4" stroke-linecap="round" fill="none">
+        <line x1="532" y1="170" x2="567" y2="135"/><line x1="592" y1="170" x2="627" y2="135"/><line x1="532" y1="110" x2="567" y2="75"/><line x1="592" y1="110" x2="627" y2="75"/>
+      </g>
+      <g fill="var(--surface)" stroke="var(--fg)" stroke-width="1.2">
+        <circle cx="52" cy="170" r="7"/><circle cx="112" cy="170" r="7"/><circle cx="52" cy="110" r="7"/><circle cx="112" cy="110" r="7"/><circle cx="87" cy="135" r="7"/><circle cx="147" cy="135" r="7"/><circle cx="87" cy="75" r="7"/><circle cx="147" cy="75" r="7"/>
+        <circle cx="212" cy="170" r="7"/><circle cx="272" cy="170" r="7"/><circle cx="212" cy="110" r="7"/><circle cx="272" cy="110" r="7"/><circle cx="247" cy="135" r="7"/><circle cx="307" cy="135" r="7"/><circle cx="247" cy="75" r="7"/><circle cx="307" cy="75" r="7"/>
+        <circle cx="372" cy="170" r="7"/><circle cx="432" cy="170" r="7"/><circle cx="372" cy="110" r="7"/><circle cx="432" cy="110" r="7"/><circle cx="407" cy="135" r="7"/><circle cx="467" cy="135" r="7"/><circle cx="407" cy="75" r="7"/><circle cx="467" cy="75" r="7"/>
+        <circle cx="532" cy="170" r="7"/><circle cx="592" cy="170" r="7"/><circle cx="532" cy="110" r="7"/><circle cx="592" cy="110" r="7"/><circle cx="567" cy="135" r="7"/><circle cx="627" cy="135" r="7"/><circle cx="567" cy="75" r="7"/><circle cx="627" cy="75" r="7"/>
+      </g>
+      <g stroke="var(--muted)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M160 125H190M184 120L190 125L184 130"/><path d="M320 125H350M344 120L350 125L344 130"/><path d="M480 125H510M504 120L510 125L504 130"/>
+      </g>
+      <g text-anchor="middle" font-family="IBM Plex Sans, system-ui, sans-serif">
+        <text x="100" y="208" font-size="15" font-weight="600" fill="var(--fg)">Start</text><text x="100" y="228" font-size="12.5" fill="var(--muted)">8 single clients</text>
+        <text x="260" y="208" font-size="15" font-weight="600" fill="var(--fg)">Dimension 1</text><text x="260" y="228" font-size="12.5" fill="var(--muted)">match clients: 4 pairs</text>
+        <text x="420" y="208" font-size="15" font-weight="600" fill="var(--fg)">Dimension 2</text><text x="420" y="228" font-size="12.5" fill="var(--muted)">match pairs: 2 squares</text>
+        <text x="580" y="208" font-size="15" font-weight="600" fill="var(--fg)">Dimension 3</text><text x="580" y="228" font-size="12.5" fill="var(--muted)">match squares: 1 cube</text>
+      </g>
+      <g font-family="IBM Plex Sans, system-ui, sans-serif" font-size="12.5" fill="var(--muted)">
+        <line x1="140" y1="266" x2="166" y2="266" stroke="var(--d1)" stroke-width="3"/><text x="174" y="270">Dimension 1 edges</text>
+        <line x1="300" y1="266" x2="326" y2="266" stroke="var(--d2)" stroke-width="3" stroke-dasharray="6 3"/><text x="334" y="270">Dimension 2 edges</text>
+        <line x1="460" y1="266" x2="486" y2="266" stroke="var(--d3)" stroke-width="3" stroke-dasharray="2 4" stroke-linecap="round"/><text x="494" y="270">Dimension 3 edges</text>
+      </g>
+    </svg>
+    </div>
+  </section>
+
   <section class="panel defs" aria-label="Definitions">
     <div class="panel-head"><h2>What the symbols mean</h2><small>i and j are any two clients</small></div>
     <div class="formula">W<sub>φ</sub>(i,j) = −(d̃<sub>ij</sub> − δ<sub>φ</sub>)² − β<sub>φ</sub> · ĉ<sub>ij</sub></div>
