@@ -48,7 +48,15 @@ svg{width:100%;height:auto;display:block}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted)}
 .legend i{display:inline-block;width:22px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
 .legend i.dash{border-top-style:dashed}
-.step-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:16px;align-items:start}
+.steps{display:grid;gap:10px}
+.stp{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:16px;align-items:start;border:1px solid var(--line);border-radius:6px;padding:12px 14px;cursor:pointer;background:var(--surface)}
+.stp:hover{border-color:color-mix(in oklab,var(--accent) 45%,var(--line))}
+.stp:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stp.active{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 6%,var(--surface))}
+.stp.future{opacity:.55}
+.stp h3{font-family:var(--font-display);font-weight:600;font-size:16px;margin:0 0 4px}
+.stp p{margin:0 0 6px;max-width:65ch}
+.stp .note{color:var(--muted);font-size:13px}
 .step-text h2{margin-bottom:6px}
 .step-text p{margin:0 0 8px;color:var(--fg);max-width:65ch}
 .step-text .note{color:var(--muted);font-size:13px}
@@ -74,7 +82,7 @@ tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
 .defs dd{margin:0;max-width:80ch}
 .defs dd b{font-weight:600}
 @media (max-width:520px){.defs dl{grid-template-columns:minmax(0,1fr)}.defs dd{margin-bottom:6px}}
-@media (max-width:860px){.views,.step-panel,.lower{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:860px){.views,.stp,.lower{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:no-preference){.edge-new{animation:draw .5s ease-out}}
 @keyframes draw{from{opacity:0}to{opacity:1}}
 </style>
@@ -197,9 +205,9 @@ tr.cur td{background:color-mix(in oklab,var(--accent) 12%,var(--surface))}
     </div>
   </section>
 
-  <section class="panel step-panel" aria-live="polite">
-    <div class="step-text" id="stepText"></div>
-    <div class="tbl-wrap" id="stepTable"></div>
+  <section class="panel" aria-label="Build steps">
+    <div class="panel-head"><h2>Build, step by step</h2><small>click a step to draw the cube up to that point</small></div>
+    <div class="steps" id="steps"></div>
   </section>
 
   <section class="lower">
@@ -286,7 +294,7 @@ function embed(net,phaseCfg){
       fs.forEach(g=>{let s=0;const e=[];A.members.forEach(u=>{const v=byLab[g(A.lab[u])];s+=W(u,v);e.push([u,v]);});if(s>bestS){bestS=s;bestF=e;}});
       const lab={};bestF.forEach(([u,v])=>{lab[u]=A.lab[u];lab[v]=A.lab[u]|(1<<(k-1));});
       next.push({members:A.members.concat(B.members),lab});
-      lv.pairs.push({A:A.members.slice(),B:B.members.slice(),agg:agg(A,B),edges:bestF.map(([u,v])=>({u,v,d:net.dmat[u][v],h:net.hops[u][v],w:W(u,v)}))});
+      lv.pairs.push({A:A.members.slice(),B:B.members.slice(),agg:agg(A,B),edges:bestF.map(([u,v])=>({u,v,d:net.dmat[u][v],dt:net.dn(u,v),h:net.hops[u][v],w:W(u,v)}))});
     });
     levels.push(lv);groups=next;
   }
@@ -341,20 +349,27 @@ function drawCube(res){
 }
 const f2=x=>x.toFixed(2);
 function drawStep(res){
-  const ph=PHASES[state.phase];const box=document.getElementById("stepText"),tb=document.getElementById("stepTable");
-  const params=`<p class="note mono">${ph.name}: δ = ${f2(res.delta)}${ph.deltaQ>0?" (75th percentile of d̃<sub>ij</sub>)":""}, β = ${res.beta}</p>`;
-  if(state.step===0){
-    box.innerHTML=`<h2>Step 0 · Inputs</h2><p>After warm-up, every pair of clients has a disagreement d<sub>ij</sub> (from shared reference-set predictions) and a physical hop count. These two matrices are all the embedding needs.</p><p>The ${ph.name.toLowerCase()} phase targets <b>${ph.desc}</b> neighbors.</p>${params}<p class="note">Press “Next dimension” to run the first matching.</p>`;
-    tb.innerHTML="";return;}
-  const lv=res.levels[state.step-1];const sizes=["clients","pairs","squares"],out=["pairs","squares","one cube"];
-  box.innerHTML=`<h2>Step ${state.step} · Dimension ${state.step}</h2>
-  <p>${N>>(state.step-1)} ${sizes[state.step-1]} are matched two by two using maximum-weight matching, where the weight between two groups is the sum of W over all their member pairs. Result: ${out[state.step-1]}.</p>
-  ${state.step>1?`<p>Within each match, members are aligned so the new edges keep the cube structure. The demo tries every valid alignment and keeps the one with the highest total W.</p>`:""}
-  ${params}`;
-  let h=`<table><thead><tr><th>Edge (dimension ${state.step})</th><th class="num">d<sub>ij</sub></th><th class="num">hops</th><th class="num">W</th></tr></thead><tbody>`;
-  lv.pairs.forEach(p=>{h+=`<tr class="grp"><td>{${p.A.map(x=>"C"+x).join(",")}} ↔ {${p.B.map(x=>"C"+x).join(",")}}</td><td></td><td></td><td class="num">Σ ${f2(p.agg)}</td></tr>`;
-    p.edges.forEach(e=>{h+=`<tr><td class="mono"><span class="dimtag" style="background:${dimVar(state.step)}">d${state.step}</span> C${e.u} – C${e.v}</td><td class="num">${f2(e.d)}</td><td class="num">${e.h}</td><td class="num">${f2(e.w)}</td></tr>`;});});
-  tb.innerHTML=h+"</tbody></table>";
+  const ph=PHASES[state.phase];const wrap=document.getElementById("steps");
+  const params=`<p class="note mono">${ph.name} phase: δ = ${f2(res.delta)}${ph.deltaQ>0?" (75th percentile of d̃)":""}, β = ${res.beta}</p>`;
+  const sizes=["clients","pairs","squares"],out=["4 pairs","2 squares","1 cube"];
+  let h="";
+  for(let k=0;k<=D;k++){
+    const cls=k===state.step?"active":(k>state.step?"future":"");
+    let txt,tbl="";
+    if(k===0){
+      txt=`<h3>Step 0 · Inputs</h3><p>After warm-up, every pair of clients has a disagreement d̃ (from shared reference-set predictions) and a physical hop count, shown in the two matrices below. These are all the build needs.</p><p>The ${ph.name.toLowerCase()} phase looks for <b>${ph.desc}</b> neighbors.</p>${params}`;
+    }else{
+      const lv=res.levels[k-1];
+      txt=`<h3>Step ${k} · Dimension ${k}</h3><p>${N>>(k-1)} ${sizes[k-1]} are matched two at a time by maximum-weight matching. The weight between two groups is the sum of W over all their member pairs (Σ in the table). Result: ${out[k-1]}.</p>${k>1?`<p class="note">Each matched pair of groups is then lined up corner to corner. Every valid alignment is tried, and the one with the highest total W gives the ${lv.pairs[0].edges.length*lv.pairs.length} new edges listed.</p>`:`<p class="note">Each match becomes one edge of dimension 1.</p>`}`;
+      tbl=`<div class="tbl-wrap"><table><thead><tr><th>Match → new edges</th><th class="num">d̃</th><th class="num">hops</th><th class="num">W</th></tr></thead><tbody>`;
+      lv.pairs.forEach(p=>{tbl+=`<tr class="grp"><td>{${p.A.map(x=>"C"+x).join(",")}} ↔ {${p.B.map(x=>"C"+x).join(",")}}</td><td></td><td></td><td class="num">Σ ${f2(p.agg)}</td></tr>`;
+        p.edges.forEach(e=>{tbl+=`<tr><td class="mono"><span class="dimtag" style="background:${dimVar(k)}">d${k}</span> C${e.u} – C${e.v}</td><td class="num">${f2(e.dt)}</td><td class="num">${e.h}</td><td class="num">${f2(e.w)}</td></tr>`;});});
+      tbl+="</tbody></table></div>";
+    }
+    h+=`<div class="stp ${cls}" role="button" tabindex="0" data-k="${k}" aria-pressed="${k===state.step}"><div>${txt}</div><div>${tbl}</div></div>`;
+  }
+  wrap.innerHTML=h;
+  wrap.querySelectorAll(".stp").forEach(b=>{const go=()=>{state.step=+b.dataset.k;render();};b.addEventListener("click",go);b.addEventListener("keydown",ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();go();}});});
 }
 function drawMats(res){
   const edgeDim={};res.edges.filter(e=>e.dim<=state.step).forEach(e=>{edgeDim[e.u+","+e.v]=e.dim;edgeDim[e.v+","+e.u]=e.dim;});
